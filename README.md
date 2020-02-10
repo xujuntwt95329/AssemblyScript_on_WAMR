@@ -1,4 +1,4 @@
-# AssemblyScript_on_wamr
+# AssemblyScript_on_WAMR
 This project is based on [Wasm Micro Runtime](https://github.com/bytecodealliance/wasm-micro-runtime) (WAMR) and [AssemblyScript](https://github.com/AssemblyScript/assemblyscript). It implements some of the `wamr app framework` in *assemblyscript*, which allows you to write some applications in *assemblyscript* and dynamically installed on *WAMR Runtime*
 
 ## Building
