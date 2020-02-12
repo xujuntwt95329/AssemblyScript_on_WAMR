@@ -32,7 +32,6 @@ Please refer to [package.json](./package.json) for more commands.
 These applications require WAMR's application framework, you need to download and build WAMR first.
 
 ``` bash
-git clone https://github.com/bytecodealliance/wasm-micro-runtime.git
 cd wasm-micro-runtime/samples/simple
 ./build.sh
 ```

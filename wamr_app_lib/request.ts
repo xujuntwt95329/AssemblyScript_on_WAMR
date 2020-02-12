@@ -67,7 +67,7 @@ class wamr_request {
     sender: i32 = 0;
 
     constructor(mid: i32, url: string, action: i32, fmt: i32,
-                payload: ArrayBuffer, payload_len: number) {
+        payload: ArrayBuffer, payload_len: number) {
         this.mid = mid;
         this.url = url;
         this.action = action;
@@ -87,7 +87,7 @@ class wamr_response {
     receiver: i32 = 0;
 
     constructor(mid: i32, status: i32, fmt: i32,
-                payload: ArrayBuffer | null, payload_len: i32) {
+        payload: ArrayBuffer | null, payload_len: i32) {
         this.mid = mid;
         this.status = status;
         this.fmt = fmt;
@@ -95,7 +95,7 @@ class wamr_response {
         this.payload_len = payload_len;
     }
 
-    set_status(status: number): void{
+    set_status(status: number): void {
         this.status = i32(status);
     }
 
@@ -185,7 +185,7 @@ function transaction_remove(trans: wamr_transaction): void {
     transaction_list.splice(index, 1);
 }
 
-export var transaction_list = new Array<wamr_transaction>();
+var transaction_list = new Array<wamr_transaction>();
 class wamr_transaction {
     mid: number;
     time: number;
@@ -201,7 +201,7 @@ class wamr_transaction {
 var REQUEST_PACKET_FIX_PART_LEN = 18;
 var RESPONSE_PACKET_FIX_PART_LEN = 16;
 var TRANSACTION_TIMEOUT_MS = 5000;
-var g_trans_timer : timer.user_timer;
+var g_trans_timer: timer.user_timer;
 
 var Reg_Event = 0;
 var Reg_Request = 1;
@@ -308,6 +308,7 @@ function unpack_response(packet: ArrayBuffer, size: i32): wamr_response {
     var payload = packet.slice(RESPONSE_PACKET_FIX_PART_LEN);
 
     var resp = new wamr_response(mid, status, fmt, payload, payload_len);
+    resp.receiver = receiver;
 
     return resp;
 }
@@ -327,6 +328,35 @@ function do_response(resp: wamr_response): void {
     wasm_response_send(msg.buffer, msg.byteLength);
 }
 
+var resource_list = new Array<wamr_resource>();
+type request_handler_f = (req: wamr_request) => void;
+
+function registe_url_handler(url: string, cb: request_handler_f, type: number): void {
+    for (let i = 0; i < resource_list.length; i++) {
+        if (resource_list[i].type == type && resource_list[i].url == url) {
+            resource_list[i].cb = cb;
+            return;
+        }
+    }
+
+    var res = new wamr_resource(url, type, cb);
+    resource_list.push(res);
+
+    if (type == Reg_Request)
+        wasm_register_resource(String.UTF8.encode(url));
+    else
+        wasm_sub_event(String.UTF8.encode(url));
+}
+
+function is_event_type(req: wamr_request): bool {
+    return req.action == COAP_EVENT;
+}
+
+function check_url_start(url: string, leading_str: string): bool {
+    return url.split('/')[0] == leading_str.split('/')[0];
+}
+
+/* User APIs below */
 export function post(url: string, payload: ArrayBuffer, payload_len: number, tag: string,
                      cb: (resp: wamr_response) => void): void {
     var req = new wamr_request(g_mid++, url, COAP_POST, 0, payload, payload_len);
@@ -366,41 +396,13 @@ export function api_response_send(resp: wamr_response): void {
     do_response(resp);
 }
 
-var resource_list = new Array<wamr_resource>();
-type request_handler_f = (req: wamr_request) => void;
-
-function registe_url_handler(url: string, cb: request_handler_f, type: number): void {
-    for (let i = 0; i < resource_list.length; i++) {
-        if (resource_list[i].type == type && resource_list[i].url == url) {
-            resource_list[i].cb = cb;
-            return;
-        }
-    }
-
-    var res = new wamr_resource(url, type, cb);
-    resource_list.push(res);
-
-    if (type == Reg_Request)
-        wasm_register_resource(String.UTF8.encode(url));
-    else
-        wasm_sub_event(String.UTF8.encode(url));
-}
-
 export function register_resource_handler(url: string,
-                                              request_handle: request_handler_f): void {
+    request_handle: request_handler_f): void {
     registe_url_handler(url, request_handle, Reg_Request);
 }
 
-function is_event_type(req: wamr_request): bool {
-    return req.action == COAP_EVENT;
-}
-
-function check_url_start(url: string, leading_str: string): bool {
-    return url.split('/')[0] == leading_str.split('/')[0];
-}
-
 export function publish_event(url: string, fmt: number,
-                              payload: ArrayBuffer, payload_len: number): void {
+    payload: ArrayBuffer, payload_len: number): void {
     var req = new wamr_request(g_mid++, url, COAP_EVENT, i32(fmt), payload, payload_len);
 
     var msg = pack_request(req);
@@ -412,6 +414,24 @@ export function subscribe_event(url: string, cb: request_handler_f): void {
     registe_url_handler(url, cb, Reg_Event);
 }
 
+
+/* These two APIs are required by wamr runtime,
+    use a wrapper to export them in the entry file
+
+    e.g:
+
+    import * as request from '.wamr_app_lib/request'
+
+    // Your code here ...
+
+    export function _on_request(buffer_offset: i32, size: i32): void {
+        on_request(buffer_offset, size);
+    }
+
+    export function _on_response(buffer_offset: i32, size: i32): void {
+        on_response(buffer_offset, size);
+    }
+*/
 export function on_request(buffer_offset: i32, size: i32): void {
     var buffer = new ArrayBuffer(size);
     var dataview = new DataView(buffer);
@@ -437,7 +457,7 @@ export function on_request(buffer_offset: i32, size: i32): void {
     console.log("on_request: exit. no service handler.");
 }
 
-export function on_response(buffer_offset : i32, size: i32): void {
+export function on_response(buffer_offset: i32, size: i32): void {
     var buffer = new ArrayBuffer(size);
     var dataview = new DataView(buffer);
 
@@ -448,7 +468,7 @@ export function on_response(buffer_offset : i32, size: i32): void {
     var resp = unpack_response(buffer, size);
     var trans = transaction_find(resp.mid);
 
-    if (trans!= null) {
+    if (trans != null) {
         if (transaction_list.indexOf(trans) == 0) {
             if (transaction_list.length >= 2) {
                 var elpased_ms: number, ms_to_expiry: number;
